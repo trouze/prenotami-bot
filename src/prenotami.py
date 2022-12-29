@@ -11,13 +11,29 @@ import os
 from config import config
 import time
 
-logging.basicConfig(filename='out.log', format='%(levelname)s:%(message)s', level=logging.INFO)
+logging.basicConfig(
+    format = '%(levelname)s:%(message)s',
+    level = logging.INFO,
+    handlers = [
+        logging.FileHandler('/tmp/out.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 class Prenotami:
     def __init__(self, config: dict):
-        options = ChromeOptions()
-        options.headless = False
-        self.driver = Chrome(ChromeDriverManager().install(), options=options)
+        chrome_options = ChromeOptions()
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--profile-directory=Default')
+        chrome_options.add_argument('--user-data-dir=/home/seluser/.config/google-chrome')
+        chrome_options.add_argument('--remote-debugging-port=9222')
+        chrome_options.add_argument('--disable-setuid-sandbox')
+        # options.binary_location = "/usr/bin/google-chrome"
+        # self.driver = Chrome("/opt/selenium/chromedriver",options=chrome_options)
+        self.driver = Chrome(options=chrome_options)
         self.config = config
 
     def login(self):
@@ -28,6 +44,7 @@ class Prenotami:
             self.driver.find_element(By.ID, 'login-email').send_keys(self.config['prenotami']['username'])
             self.driver.find_element(By.ID, 'login-password').send_keys(self.config['prenotami']['password'])
             self.driver.find_element(By.XPATH, "//button[@type='submit']").click()
+            logging.info("Logged in to Prenotami.")
 
         except Exception as e:
             logging.info("TIMESTAMP: " + str(datetime.now()))
@@ -41,7 +58,7 @@ class Prenotami:
 
         try:
             self.driver.get('https://prenotami.esteri.it/Services')
-            time.sleep(2)
+            time.sleep(5)
             self.driver.find_element(By.XPATH, "//*[@id='dataTableServices']/tbody/tr[3]/td[4]/a/button").click()
             time.sleep(2)
             appts_available = self.driver.find_element(By.XPATH, "//*[@id='WlNotAvailable']").get_attribute("value")
