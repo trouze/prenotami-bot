@@ -1,100 +1,119 @@
-#!/usr/bin/env python3
-
 from selenium.webdriver import Chrome, ChromeOptions
+from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
+
 import logging
-from datetime import datetime
-import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from smtplib import SMTP
 import sys
-import os
-from config import config
 import time
 
+
 logging.basicConfig(
-    format = '%(levelname)s:%(message)s',
+    format = '%(asctime)s %(levelname)-8s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
     level = logging.INFO,
     handlers = [
-        logging.FileHandler('/tmp/out.log'),
+        logging.FileHandler('/tmp/prenotami-bot.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )
 
-class Prenotami:
+
+class PrenotamiBot:
     def __init__(self, config: dict):
         chrome_options = ChromeOptions()
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_experimental_option("detach", True)
+        chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--profile-directory=Default')
-        chrome_options.add_argument('--user-data-dir=/home/seluser/.config/google-chrome')
-        chrome_options.add_argument('--remote-debugging-port=9222')
-        chrome_options.add_argument('--disable-setuid-sandbox')
+        chrome_options.add_argument('--blink-settings=imagesEnabled=false')
+        chrome_options.add_argument('--no-sandbox')
+        # chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36')
+        # chrome_options.add_argument('--headless')
+        # chrome_options.add_argument("--window-size=1920,1080")
+        # chrome_options.add_argument('--ignore-certificate-errors')
+        # chrome_options.add_argument('--allow-running-insecure-content')
+        # user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+        # chrome_options.add_argument(f'--user-agent="{user_agent}"')
+        # chrome_options.add_argument('--disable-gpu')
+        # chrome_options.add_argument('--profile-directory=Default')
+        # chrome_options.add_argument('--user-data-dir=/home/seluser/.config/google-chrome')
+        # chrome_options.add_argument('--remote-debugging-port=9222')
+        # chrome_options.add_argument('--disable-setuid-sandbox')
         # options.binary_location = "/usr/bin/google-chrome"
         # self.driver = Chrome("/opt/selenium/chromedriver",options=chrome_options)
-        self.driver = Chrome(options=chrome_options)
+        # self.driver = Chrome(options=chrome_options)
+        self.driver = Chrome(
+            options=chrome_options,
+            service=Service(ChromeDriverManager(version="114.0.5735.90").install(),
+        ))
         self.config = config
 
     def login(self):
-
         try:
-            self.driver.get('https://prenotami.esteri.it')
-            time.sleep(2)
-            self.driver.find_element(By.ID, 'login-email').send_keys(self.config['prenotami']['username'])
-            self.driver.find_element(By.ID, 'login-password').send_keys(self.config['prenotami']['password'])
-            self.driver.find_element(By.XPATH, "//button[@type='submit']").click()
+            self.driver.get("https://prenotami.esteri.it/")
+            email_box = WebDriverWait(self.driver, 60).until(
+                EC.presence_of_element_located((By.ID, "login-email"))
+            )
+            password_box = self.driver.find_element(By.ID, "login-password")
+            email_box.send_keys(self.config['prenotami']['username'])
+            password_box.send_keys(self.config['prenotami']['password'])
+            time.sleep(4)
+            button = self.driver.find_elements(
+                By.XPATH, "//button[contains(@class,'button primary g-recaptcha')]"
+            )
+            self.driver.get_screenshot_as_file("screenshot-1.png")
+            button[0].click()
             logging.info("Logged in to Prenotami.")
-
+            time.sleep(4) # Waiting some time to fully load after login and skip errors
         except Exception as e:
-            logging.info("TIMESTAMP: " + str(datetime.now()))
-            logging.info("Failure to login occurred. Sending text notification...")
-            logging.info("Exception: " + e)
-            phone_numbers = [x for x in self.config['phone_numbers'] if x['dev']==True]
-            [self.send_text(phone_number['number'],phone_number['carrier'],"Login to Pretonami failed, please check system.") for phone_number in phone_numbers]
+            self.driver.get_screenshot_as_file("prenotami-screenshot.png")
+            logging.error("Failure to login occurred. Sending text notification.", e)
+            self._send_email("Login to Pretonami failed, please check system.")
 
 
     def check_appointments(self):
-
         try:
-            self.driver.get('https://prenotami.esteri.it/Services')
+            self.driver.get('https://prenotami.esteri.it/Services/Booking/287')
             time.sleep(5)
-            self.driver.find_element(By.XPATH, "//*[@id='dataTableServices']/tbody/tr[3]/td[4]/a/button").click()
-            time.sleep(2)
-            appts_available = self.driver.find_element(By.XPATH, "//*[@id='WlNotAvailable']").get_attribute("value")
-            
-            if appts_available == 'Al momento non ci sono date disponibili per il servizio richiesto':
-                logging.info("TIMESTAMP: " + str(datetime.now()))
-                logging.info("No change to prenotami detected.")
-                sys.exit(0)
+            try:
+                appts_available = self.driver.find_element(By.XPATH,
+                                                           "//*[@id='WlNotAvailable']"
+                                                        ).get_attribute("value")
+            except NoSuchElementException:
+                message = "Change detected on Prenotami, please check system for available appointments."
+                self._send_email(message)
+                logging.info(message)
             else:
-                message = "Change detected on prenotami, please check system for available appointments."
-                phone_numbers = [x for x in self.config['phone_numbers']]
-                [self.send_text(phone_number['number'], phone_number['carrier'], message) for phone_number in phone_numbers]
-                logging.info("TIMESTAMP: " + str(datetime.now()))
-                logging.info("Change detected on prenotami.")
+                logging.info(f"No dates available at the moment: {appts_available}")
 
         except Exception as e:
-            message = "An exception occurred when attempting to check for apppointments on Prenotami, this may mean booking is available. \n {e}".format(e=e)
-            phone_numbers = [x for x in self.config['phone_numbers']]
-            [self.send_text(phone_number['number'], phone_number['carrier'], message) for phone_number in phone_numbers]
-            logging.info("TIMESTAMP: " + str(datetime.now()))
-            logging.info("Possible change detected on prenotami.")
-            logging.info("Exception: " + str(e))
+            self.driver.get_screenshot_as_file("prenotami-screenshot.png")
+            message = f"An exception occurred when attempting book apppointments on Prenotami. This may mean booking is available.\n{e}"
+            logging.error(f"Possible change detected on prenotami. Exception: {e}")
+            self._send_email(message)
+        finally:
+            self.driver.quit()
 
-    def send_text(self, phone_number: str, carrier: str, message: str):
 
+    def _send_email(self, message: str):
         try:
-            recipient = phone_number + self.config['carriers'][carrier]
-            server = smtplib.SMTP("smtp.gmail.com", 587)
-            server.starttls()
-            server.login(self.config['email']['username'], self.config['email']['password'])
-            server.sendmail(self.config['email']['username'], recipient, message)
+            msg = MIMEMultipart()
+            msg['From'] = self.config['email']['sender']
+            msg['To'] = self.config['email']['recipient']
+            msg['Subject'] = '[Prenotami-bot] notification'
+            msg.attach(MIMEText(message, 'plain'))
 
+            smtp = SMTP(self.config['email']['server'], 587)
+            smtp.starttls()
+            smtp.login(self.config['email']['username'], self.config['email']['password'])
+            smtp.sendmail(self.config['email']['username'], self.config['email']['recipient'], msg.as_string())
+            smtp.quit()
         except Exception as e:
-            logging.info("TIMESTAMP: " + str(datetime.now()))
-            logging.info("Failure to send text message.")
-            logging.info("Exception: " + e)
-
-
-
+            logging.error(f"Failure to send email. Exception: {e}")

@@ -1,7 +1,7 @@
-from prenotami import Prenotami
+from prenotami import PrenotamiBot
 from config import config
 
 if __name__ == "__main__":
-    run = Prenotami(config)
-    run.login()
-    run.check_appointments()
+    bot = PrenotamiBot(config)
+    bot.login()
+    bot.check_appointments()
