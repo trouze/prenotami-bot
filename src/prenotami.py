@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 from smtplib import SMTP
 import sys
 import time
+import random
 
 
 logging.basicConfig(
@@ -25,20 +26,25 @@ logging.basicConfig(
     ]
 )
 
+def sleep(max_time: int):
+    time.sleep(random.randint(1, max_time))
+
 
 class PrenotamiBot:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, headless: bool = False):
         chrome_options = ChromeOptions()
         chrome_options.add_experimental_option("detach", True)
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--blink-settings=imagesEnabled=false')
         chrome_options.add_argument('--no-sandbox')
-        # chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36')
-        # chrome_options.add_argument('--headless')
-        # chrome_options.add_argument("--window-size=1920,1080")
-        # chrome_options.add_argument('--ignore-certificate-errors')
-        # chrome_options.add_argument('--allow-running-insecure-content')
+
+        if headless:
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36')
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument("--window-size=1920,1080")
+            chrome_options.add_argument('--ignore-certificate-errors')
+            chrome_options.add_argument('--allow-running-insecure-content')
         # user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
         # chrome_options.add_argument(f'--user-agent="{user_agent}"')
         # chrome_options.add_argument('--disable-gpu')
@@ -54,6 +60,7 @@ class PrenotamiBot:
             service=Service(ChromeDriverManager(version="114.0.5735.90").install(),
         ))
         self.config = config
+        self.is_logged_in = False
 
     def login(self):
         try:
@@ -61,24 +68,34 @@ class PrenotamiBot:
             email_box = WebDriverWait(self.driver, 60).until(
                 EC.presence_of_element_located((By.ID, "login-email"))
             )
+
             password_box = self.driver.find_element(By.ID, "login-password")
             email_box.send_keys(self.config['prenotami']['username'])
             password_box.send_keys(self.config['prenotami']['password'])
-            time.sleep(4)
+            sleep(4)
             button = self.driver.find_elements(
                 By.XPATH, "//button[contains(@class,'button primary g-recaptcha')]"
             )
             self.driver.get_screenshot_as_file("screenshot-1.png")
             button[0].click()
+
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, "logoutForm"))
+            )
             logging.info("Logged in to Prenotami.")
-            time.sleep(4) # Waiting some time to fully load after login and skip errors
+            self.is_logged_in = True
         except Exception as e:
-            self.driver.get_screenshot_as_file("prenotami-screenshot.png")
-            logging.error("Failure to login occurred. Sending text notification.", e)
+            self.driver.get_screenshot_as_file("prenotami-screenshot-login.png")
+            logging.error(f"Failure to login occurred. Sending text notification. Exception: {e}")
             self._send_email("Login to Pretonami failed, please check system.")
+            self.driver.quit()
 
 
     def check_appointments(self):
+        if not self.is_logged_in:
+            logging.info("Can't check for appointments: not logged in to Prenotami.")
+            sys.exit(1)
+
         try:
             self.driver.get('https://prenotami.esteri.it/Services/Booking/287')
             time.sleep(5)
@@ -88,13 +105,14 @@ class PrenotamiBot:
                                                         ).get_attribute("value")
             except NoSuchElementException:
                 message = "Change detected on Prenotami, please check system for available appointments."
+                self.driver.get_screenshot_as_file("prenotami-screenshot-change.png")
                 self._send_email(message)
                 logging.info(message)
             else:
                 logging.info(f"No dates available at the moment: {appts_available}")
 
         except Exception as e:
-            self.driver.get_screenshot_as_file("prenotami-screenshot.png")
+            self.driver.get_screenshot_as_file("prenotami-screenshot-appointment.png")
             message = f"An exception occurred when attempting book apppointments on Prenotami. This may mean booking is available.\n{e}"
             logging.error(f"Possible change detected on prenotami. Exception: {e}")
             self._send_email(message)
