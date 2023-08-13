@@ -33,7 +33,7 @@ def sleep(max_time: int):
 
 
 class PrenotamiBot:
-    def __init__(self, config: dict, headless: bool = False):
+    def __init__(self, config: dict, headless: bool=False):
         chrome_options = ChromeOptions()
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument('--disable-dev-shm-usage')
@@ -46,22 +46,14 @@ class PrenotamiBot:
             chrome_options.add_argument("--window-size=1920,1080")
             chrome_options.add_argument('--ignore-certificate-errors')
             chrome_options.add_argument('--allow-running-insecure-content')
-        # user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-        # chrome_options.add_argument(f'--user-agent="{user_agent}"')
-        # chrome_options.add_argument('--disable-gpu')
-        # chrome_options.add_argument('--profile-directory=Default')
-        # chrome_options.add_argument('--user-data-dir=/home/seluser/.config/google-chrome')
-        # chrome_options.add_argument('--remote-debugging-port=9222')
-        # chrome_options.add_argument('--disable-setuid-sandbox')
-        # options.binary_location = "/usr/bin/google-chrome"
-        # self.driver = Chrome("/opt/selenium/chromedriver",options=chrome_options)
-        # self.driver = Chrome(options=chrome_options)
+
         self.driver = uc.Chrome(
             options=chrome_options,
             service=Service(ChromeDriverManager(version="114.0.5735.90").install(),
         ))
         self.config = config
         self.is_logged_in = False
+
 
     def login(self):
         try:
@@ -77,7 +69,6 @@ class PrenotamiBot:
             button = self.driver.find_elements(
                 By.XPATH, "//button[contains(@class,'button primary g-recaptcha')]"
             )
-            self.driver.get_screenshot_as_file("screenshot-1.png")
             button[0].click()
 
             WebDriverWait(self.driver, 10).until(
@@ -110,7 +101,7 @@ class PrenotamiBot:
                 self._send_email(message)
                 logging.info(message)
             else:
-                logging.info(f"No dates available at the moment: {appts_available}")
+                logging.info(f"No dates available at the moment: {appts_available.strip()}")
 
         except Exception as e:
             self.driver.get_screenshot_as_file("prenotami-screenshot-appointment.png")
