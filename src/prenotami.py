@@ -1,4 +1,4 @@
-from selenium.webdriver import Chrome, ChromeOptions
+from selenium.webdriver import ChromeOptions
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support import expected_conditions as EC
@@ -6,6 +6,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
+import undetected_chromedriver as uc
 
 import logging
 from email.mime.multipart import MIMEMultipart
@@ -26,6 +27,7 @@ logging.basicConfig(
     ]
 )
 
+
 def sleep(max_time: int):
     time.sleep(random.randint(1, max_time))
 
@@ -33,7 +35,6 @@ def sleep(max_time: int):
 class PrenotamiBot:
     def __init__(self, config: dict, headless: bool = False):
         chrome_options = ChromeOptions()
-        chrome_options.add_experimental_option("detach", True)
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--blink-settings=imagesEnabled=false')
@@ -55,7 +56,7 @@ class PrenotamiBot:
         # options.binary_location = "/usr/bin/google-chrome"
         # self.driver = Chrome("/opt/selenium/chromedriver",options=chrome_options)
         # self.driver = Chrome(options=chrome_options)
-        self.driver = Chrome(
+        self.driver = uc.Chrome(
             options=chrome_options,
             service=Service(ChromeDriverManager(version="114.0.5735.90").install(),
         ))
